@@ -1,0 +1,72 @@
+- name: Upgrade Fedora 43 to 44
+  hosts: fedora_hosts
+  become: true
+  gather_facts: true
+
+  vars:
+    target_release: 44
+
+  tasks:
+
+    - name: Ensure system is fully updated
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+        update_cache: yes
+
+    - name: Check if reboot is required
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required_file
+
+    - name: Reboot if required before upgrade
+      ansible.builtin.reboot:
+        msg: "Rebooting before Fedora upgrade"
+        connect_timeout: 5
+        reboot_timeout: 600
+        pre_reboot_delay: 0
+        post_reboot_delay: 10
+        test_command: whoami
+      when: reboot_required_file.stat.exists
+
+    - name: Ensure dnf-plugin-system-upgrade is installed
+      ansible.builtin.dnf:
+        name: dnf-plugin-system-upgrade
+        state: present
+
+    - name: Download Fedora {{ target_release }} upgrade packages
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+        releasever: "{{ target_release }}"
+        download_only: yes
+        allowerasing: yes
+
+    - name: Trigger system upgrade
+      ansible.builtin.dnf:
+        name: "@System"
+        state: latest
+        releasever: "{{ target_release }}"
+        allowerasing: yes
+
+    - name: Reboot after upgrade
+      ansible.builtin.reboot:
+        msg: "Rebooting after Fedora upgrade"
+        connect_timeout: 5
+        reboot_timeout: 1200
+        post_reboot_delay: 20
+        test_command: whoami
+
+    - name: Verify system is now Fedora {{ target_release }}
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution_major_version'] | int == target_release
+        fail_msg: "Upgrade failed! System is not on Fedora {{ target_release }}"
+
+    - name: Remove unused packages
+      ansible.builtin.dnf:
+        autoremove: yes
+
+    - name: Clean DNF cache
+      ansible.builtin.dnf:
+        clean: all
