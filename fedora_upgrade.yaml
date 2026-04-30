@@ -1,5 +1,5 @@
 - name: Upgrade Fedora 43 to 44
-  hosts: fedora_hosts
+  hosts: fedora
   become: true
   gather_facts: true
 
